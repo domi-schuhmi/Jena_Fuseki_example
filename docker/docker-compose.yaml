@@ -1,0 +1,9 @@
+version: "1"
+services:
+  fuseki:
+    build:
+      context: .
+      dockerfile: ./fuseki_jena
+    container_name: fuseki
+    ports:
+      - "3030:3030"

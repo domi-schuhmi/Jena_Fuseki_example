@@ -36,6 +36,4 @@ build/
 
 ### Mac OS ###
 .DS_Store
-
-docker/wikidata-20230324-lexemes-BETA.ttl
 /.idea/
