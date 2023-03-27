@@ -1,65 +1,104 @@
-## Example of a TDB dataset and text index published using Fuseki
-@prefix :        <#> .
+#Licensed under the terms of http://www.apache.org/licenses/LICENSE-2.0
+
+## Fuseki Server configuration file.
+
+@prefix :        <http://www.example.org/> .
+@prefix text:    <http://jena.apache.org/text#> .
 @prefix fuseki:  <http://jena.apache.org/fuseki#> .
 @prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tdb:     <http://jena.hpl.hp.com/2008/tdb#> .
+@prefix tdb2:    <http://jena.apache.org/2016/tdb#> .
 @prefix ja:      <http://jena.hpl.hp.com/2005/11/Assembler#> .
-@prefix text:    <http://jena.apache.org/text#> .
+
 [] rdf:type fuseki:Server ;
-   # Timeout - server-wide default: milliseconds.
-   # Format 1: "1000" -- 1 second timeout
-   # Format 2: "10000,60000" -- 10s timeout to first result, then 60s timeout to for rest of query.
-   # See java doc for ARQ.queryTimeout
-   # ja:context [ ja:cxtName "arq:queryTimeout" ;  ja:cxtValue "10000" ] ;
-   # ja:loadClass "your.code.Class" ;
    fuseki:services (
-				<#service_text_tdb>
+				<#service_tdb2>
 			) .
-# TDB
-[] ja:loadClass "com.hp.hpl.jena.tdb.TDB" .
-tdb:DatasetTDB  rdfs:subClassOf  ja:RDFDataset .
-tdb:GraphTDB    rdfs:subClassOf  ja:Model .
-# Text
-[] ja:loadClass "org.apache.jena.query.text.TextQuery" .
+
+## Initialize text query
+[] ja:loadClass       "org.apache.jena.query.text.TextQuery" .
+# A TextDataset is a regular dataset with a text index.
 text:TextDataset      rdfs:subClassOf   ja:RDFDataset .
-#text:TextIndexSolr    rdfs:subClassOf   text:TextIndex .
+# Lucene index
 text:TextIndexLucene  rdfs:subClassOf   text:TextIndex .
-## ---------------------------------------------------------------
-<#service_text_tdb> rdf:type fuseki:Service ;
-					rdfs:label                      "TDB/text service" ;
-					fuseki:name                     "ds" ;
-					fuseki:serviceQuery             "query" ;
-					fuseki:serviceQuery             "sparql" ;
-					fuseki:serviceUpdate            "update" ;
-					fuseki:serviceUpload            "upload" ;
-					fuseki:serviceReadGraphStore    "get" ;
-					fuseki:serviceReadWriteGraphStore    "data" ;
-					fuseki:dataset                  <#text_dataset> ;
+
+
+<#text_dataset> rdf:type text:TextDataset ;
+				text:dataset <#tdb_dataset_readwrite> ;
+				text:index <#indexLucene> ;
 .
-<#text_dataset> rdf:type     text:TextDataset ;
-				text:dataset   <#dataset> ;
-				##text:index   <#indexSolr> ;
-				text:index     <#indexLucene> ;
+
+<#indexLucene>  a text:TextIndexLucene ;
+				text:directory <file:run/lucene> ;
+				text:storeValue true ;
+				text:setAllowLeadingWildcard true ;
+				text:entityMap <#entMap> ;
+				text:analyzer  [
+					  a text:LocalizedAnalyzer ;
+					  text:language "de"
+				  ]
 .
-<#dataset> rdf:type      tdb:DatasetTDB ;
-		   tdb:location "DB" ;
-	##tdb:unionDefaultGraph true ;
-.
-<#indexSolr> a text:TextIndexSolr ;
-			 #text:server <http://localhost:8983/solr/COLLECTION> ;
-			 text:server <embedded:SolrARQ> ;
-			 text:entityMap <#entMap> ;
-.
-<#indexLucene> a text:TextIndexLucene ;
-			   text:directory <file:Lucene> ;
-			   ##text:directory "mem" ;
-			   text:entityMap <#entMap> ;
-.
+
 <#entMap> a text:EntityMap ;
-		  text:entityField      "uri" ;
-		  text:defaultField     "text" ;        ## Should be defined in the text:map.
+		  text:defaultField "text" ;
+		  text:entityField "uri" ;
 		  text:map (
-			# rdfs:label
-			[ text:field "text" ; text:predicate rdfs:label ]
-			) .
+				[
+					text:field "text" ;
+					text:predicate rdfs:label
+				]
+				[
+					text:field "name" ;
+					text:predicate rdfs:label
+				]
+			)
+.
+
+<#service_tdb2> rdf:type fuseki:Service ;
+				rdfs:label                      "TDB2 Service (RW)" ;
+				fuseki:name                     "example" ;
+				fuseki:serviceQuery             "query" ;
+				fuseki:serviceQuery             "sparql" ;
+				fuseki:serviceUpdate            "update" ;
+				fuseki:serviceUpload            "upload" ;
+				fuseki:serviceReadWriteGraphStore      "data" ;
+				# A separate read-only graph store endpoint:
+				fuseki:serviceReadGraphStore       "get" ;
+				fuseki:dataset           <#text_dataset> ;
+				fuseki:endpoint [ fuseki:operation fuseki:shacl ;
+								  fuseki:name "shacl" ]
+.
+
+<#tdb_dataset_readwrite> rdf:type      tdb2:DatasetTDB2 ;
+						 tdb2:location "run/databases/TDB2" ;
+	## This is supported: tdb2:unionDefaultGraph true ;
+.
+
+
+<#dataset> rdf:type      tdb:DatasetTDB2 ;
+		   tdb:location "DB2" ;
+		   # Query timeout on this dataset (1s, 1000 milliseconds)
+		   ja:context [ ja:cxtName "arq:queryTimeout" ;  ja:cxtValue "1000" ] ;
+	# Make the default graph be the union of all named graphs.
+	## tdb:unionDefaultGraph true ;
+.
+
+# Example::
+# Server-wide query timeout.
+#
+# Timeout - server-wide default: milliseconds.
+# Format 1: "1000" -- 1 second timeout
+# Format 2: "10000,60000" -- 10s timeout to first result,
+#                            then 60s timeout for the rest of query.
+#
+# See javadoc for ARQ.queryTimeout for details.
+# This can also be set on a per dataset basis in the dataset assembler.
+#
+# ja:context [ ja:cxtName "arq:queryTimeout" ;  ja:cxtValue "30000" ] ;
+
+# Add any custom classes you want to load.
+# Must have a "public static void init()" method.
+# ja:loadClass "your.code.Class" ;
+
+# End triples.
